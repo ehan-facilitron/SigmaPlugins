@@ -22,13 +22,16 @@
 </head>
 <body>
 <div id="container">
-  <div id="status">Connecting to Sigma...</div>
+  <div id="status">Loading...</div>
   <div id="chart-wrap" style="display:none">
     <div id="chart"></div>
     <div id="legend"></div>
   </div>
 </div>
 
+<script src="https://unpkg.com/@sigmacomputing/plugin@latest/dist/bundle.js"
+  onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/@sigmacomputing/plugin@latest/dist/bundle.js'">
+</script>
 <script>
 const PALETTE = [
   "#4e79a7","#f28e2b","#e15759","#76b7b2","#59a14f",
@@ -58,7 +61,7 @@ function draw(data) {
   d3.select("#legend").selectAll("*").remove();
 
   if (!data || !data.length) {
-    document.getElementById("status").textContent = "Map your columns (Category, Charges, Hours) to display the chart.";
+    document.getElementById("status").textContent = "Select a data source and map columns in the editor panel.";
     document.getElementById("status").style.display = "block";
     document.getElementById("chart-wrap").style.display = "none";
     return;
@@ -68,7 +71,7 @@ function draw(data) {
   document.getElementById("chart-wrap").style.display = "flex";
 
   data = data.filter(d => d.Category && (d.Charges > 0 || d.Hours > 0));
-  data.sort((a,b) => b.Charges - a.Charges);
+  data.sort((a, b) => b.Charges - a.Charges);
 
   const cats = data.map(d => d.Category);
   const color = d3.scaleOrdinal().domain(cats).range(PALETTE);
@@ -76,125 +79,127 @@ function draw(data) {
   const W = Math.min(window.innerWidth * 0.6, 380);
   const H = Math.min(window.innerHeight * 0.9, 380);
   const cx = W/2, cy = H/2;
-  const outerR = Math.min(cx,cy) - 14;
+  const outerR = Math.min(cx, cy) - 14;
   const midR   = outerR * 0.61;
   const innerR = outerR * 0.27;
 
-  const svg = d3.select("#chart").append("svg").attr("width",W).attr("height",H);
-  const g = svg.append("g").attr("transform",`translate(${cx},${cy})`);
+  const svg = d3.select("#chart").append("svg").attr("width", W).attr("height", H);
+  const g = svg.append("g").attr("transform", `translate(${cx},${cy})`);
 
-  const pie = d3.pie().value(d=>d).sort(null).padAngle(0.014);
-  const arcO  = d3.arc().innerRadius(midR).outerRadius(outerR).cornerRadius(3);
-  const arcI  = d3.arc().innerRadius(innerR).outerRadius(midR-5).cornerRadius(3);
-  const midO  = d3.arc().innerRadius((midR+outerR)/2).outerRadius((midR+outerR)/2);
-  const midI  = d3.arc().innerRadius((innerR+midR-5)/2).outerRadius((innerR+midR-5)/2);
+  const pie = d3.pie().value(d => d).sort(null).padAngle(0.014);
+  const arcO = d3.arc().innerRadius(midR).outerRadius(outerR).cornerRadius(3);
+  const arcI = d3.arc().innerRadius(innerR).outerRadius(midR - 5).cornerRadius(3);
+  const midO = d3.arc().innerRadius((midR + outerR) / 2).outerRadius((midR + outerR) / 2);
+  const midI = d3.arc().innerRadius((innerR + midR - 5) / 2).outerRadius((innerR + midR - 5) / 2);
 
-  const totC = d3.sum(data, d=>d.Charges);
-  const totH = d3.sum(data, d=>d.Hours);
+  const totC = d3.sum(data, d => d.Charges);
+  const totH = d3.sum(data, d => d.Hours);
 
-  const outerArcs = pie(data.map(d=>d.Charges));
+  // Outer ring - Charges
+  const outerArcs = pie(data.map(d => d.Charges));
   g.selectAll(".so").data(outerArcs).join("path")
     .attr("d", arcO)
-    .attr("fill", (_,i) => color(cats[i]))
-    .attr("stroke","#fff").attr("stroke-width",1.5)
-    .append("title").text((_,i) => `${cats[i]}\n${fmt$(data[i].Charges)} (${pct(data[i].Charges/totC)})`);
+    .attr("fill", (_, i) => color(cats[i]))
+    .attr("stroke", "#fff").attr("stroke-width", 1.5)
+    .append("title").text((_, i) => `${cats[i]}\n${fmt$(data[i].Charges)} (${pct(data[i].Charges / totC)})`);
 
   g.selectAll(".lo").data(outerArcs).join("text")
-    .attr("class","slice-label")
-    .attr("transform", (_,i) => data[i].Charges/totC > 0.04 ? `translate(${midO.centroid(outerArcs[i])})` : "translate(-9999,-9999)")
-    .attr("text-anchor","middle")
-    .each(function(_,i) {
-      if (data[i].Charges/totC <= 0.04) return;
+    .attr("class", "slice-label")
+    .attr("transform", (_, i) => data[i].Charges / totC > 0.04 ? `translate(${midO.centroid(outerArcs[i])})` : "translate(-9999,-9999)")
+    .attr("text-anchor", "middle")
+    .each(function(_, i) {
+      if (data[i].Charges / totC <= 0.04) return;
       const t = d3.select(this);
-      t.append("tspan").attr("x",0).attr("dy","-0.45em").attr("font-size","11px").text(fmt$(data[i].Charges));
-      t.append("tspan").attr("x",0).attr("dy","1.25em").attr("font-size","10px").text(pct(data[i].Charges/totC));
+      t.append("tspan").attr("x", 0).attr("dy", "-0.45em").attr("font-size", "11px").text(fmt$(data[i].Charges));
+      t.append("tspan").attr("x", 0).attr("dy", "1.25em").attr("font-size", "10px").text(pct(data[i].Charges / totC));
     });
 
-  const innerArcs = pie(data.map(d=>d.Hours));
+  // Inner ring - Hours
+  const innerArcs = pie(data.map(d => d.Hours));
   g.selectAll(".si").data(innerArcs).join("path")
     .attr("d", arcI)
-    .attr("fill", (_,i) => color(cats[i]))
+    .attr("fill", (_, i) => color(cats[i]))
     .attr("opacity", 0.76)
-    .attr("stroke","#fff").attr("stroke-width",1.5)
-    .append("title").text((_,i) => `${cats[i]}\n${fmtH(data[i].Hours)} hrs (${pct(data[i].Hours/totH)})`);
+    .attr("stroke", "#fff").attr("stroke-width", 1.5)
+    .append("title").text((_, i) => `${cats[i]}\n${fmtH(data[i].Hours)} hrs (${pct(data[i].Hours / totH)})`);
 
   g.selectAll(".li").data(innerArcs).join("text")
-    .attr("class","slice-label")
-    .attr("transform", (_,i) => data[i].Hours/totH > 0.07 ? `translate(${midI.centroid(innerArcs[i])})` : "translate(-9999,-9999)")
-    .attr("text-anchor","middle")
-    .each(function(_,i) {
-      if (data[i].Hours/totH <= 0.07) return;
+    .attr("class", "slice-label")
+    .attr("transform", (_, i) => data[i].Hours / totH > 0.07 ? `translate(${midI.centroid(innerArcs[i])})` : "translate(-9999,-9999)")
+    .attr("text-anchor", "middle")
+    .each(function(_, i) {
+      if (data[i].Hours / totH <= 0.07) return;
       const t = d3.select(this);
-      t.append("tspan").attr("x",0).attr("dy","-0.45em").attr("font-size","10px").text(fmtH(data[i].Hours));
-      t.append("tspan").attr("x",0).attr("dy","1.25em").attr("font-size","9px").text(pct(data[i].Hours/totH));
+      t.append("tspan").attr("x", 0).attr("dy", "-0.45em").attr("font-size", "10px").text(fmtH(data[i].Hours));
+      t.append("tspan").attr("x", 0).attr("dy", "1.25em").attr("font-size", "9px").text(pct(data[i].Hours / totH));
     });
 
-  g.append("text").attr("class","center-main").attr("text-anchor","middle").attr("dy","-0.6em").text(fmt$(totC));
-  g.append("text").attr("class","center-sub").attr("text-anchor","middle").attr("dy","0.8em").text("Total Charges");
-  g.append("text").attr("class","center-sub").attr("text-anchor","middle").attr("dy","2.1em").text(fmtH(totH)+" hrs");
+  // Center text
+  g.append("text").attr("class", "center-main").attr("text-anchor", "middle").attr("dy", "-0.6em").text(fmt$(totC));
+  g.append("text").attr("class", "center-sub").attr("text-anchor", "middle").attr("dy", "0.8em").text("Total Charges");
+  g.append("text").attr("class", "center-sub").attr("text-anchor", "middle").attr("dy", "2.1em").text(fmtH(totH) + " hrs");
 
-  svg.append("text").attr("x",cx).attr("y",12).attr("text-anchor","middle").attr("font-size","10px").attr("fill","#666").attr("font-weight","bold").text("▸ Outer: Charges");
-  svg.append("text").attr("x",cx).attr("y",H-2).attr("text-anchor","middle").attr("font-size","10px").attr("fill","#666").attr("font-weight","bold").text("▸ Inner: Hours");
+  svg.append("text").attr("x", cx).attr("y", 12).attr("text-anchor", "middle").attr("font-size", "10px").attr("fill", "#666").attr("font-weight", "bold").text("▸ Outer: Charges");
+  svg.append("text").attr("x", cx).attr("y", H - 2).attr("text-anchor", "middle").attr("font-size", "10px").attr("fill", "#666").attr("font-weight", "bold").text("▸ Inner: Hours");
 
+  // Legend
   const leg = d3.select("#legend");
   leg.append("h4").text("Rate Category");
-  cats.forEach((cat,i) => {
-    const row = leg.append("div").attr("class","legend-item");
-    row.append("div").attr("class","legend-swatch").style("background", color(cat));
+  cats.forEach((cat, i) => {
+    const row = leg.append("div").attr("class", "legend-item");
+    row.append("div").attr("class", "legend-swatch").style("background", color(cat));
     row.append("span").text(cat);
   });
 }
 
-// ── Sigma Plugin API ───────────────────────────────────────────────────────
-// The sigma object is injected by Sigma when loaded inside a workbook iframe.
-// We poll for it rather than trying to load it from a CDN.
-function waitForSigma(attempts) {
-  if (attempts <= 0) {
-    document.getElementById("status").textContent = "Error: Sigma Plugin API not detected. Make sure this is loaded inside a Sigma workbook.";
-    return;
-  }
-  if (typeof sigma !== "undefined") {
-    setupPlugin();
-    return;
-  }
-  setTimeout(() => waitForSigma(attempts - 1), 300);
-}
+// ── Sigma Plugin API (correct v2 API) ─────────────────────────────────────
+window.addEventListener('load', () => {
+  // client is injected globally by the Sigma plugin bundle
+  const client = window.client || sigmajs?.client;
 
-function setupPlugin() {
-  sigma.config({
-    id:   "nested-pie-chart",
-    name: "Nested Pie Chart",
-    columns: [
-      { name: "Category", type: "text"   },
-      { name: "Charges",  type: "number" },
-      { name: "Hours",    type: "number" },
-    ]
-  });
+  if (!client) {
+    document.getElementById("status").textContent = "Sigma client not found. Open this inside a Sigma workbook.";
+    return;
+  }
+
+  // Configure the editor panel with a data source + 3 column pickers
+  client.config.configureEditorPanel([
+    { name: 'source', type: 'element', label: 'Data Source' },
+    { name: 'category', type: 'column', source: 'source', allowMultiple: false, label: 'Category (Rate Category)' },
+    { name: 'charges',  type: 'column', source: 'source', allowMultiple: false, label: 'Charges' },
+    { name: 'hours',    type: 'column', source: 'source', allowMultiple: false, label: 'Hours' },
+  ]);
 
   function loadData() {
-    try {
-      const rows = sigma.getAllRows("Category");
-      if (!rows || !rows.length) { draw([]); return; }
-      draw(rows.map(r => ({
-        Category: r["Category"] || "Unknown",
-        Charges:  parseFloat(r["Charges"]) || 0,
-        Hours:    parseFloat(r["Hours"])   || 0,
-      })));
-    } catch(e) {
-      console.error("Data error:", e);
+    const config = client.config.getConfig();
+    const categoryCol = config['category'];
+    const chargesCol  = config['charges'];
+    const hoursCol    = config['hours'];
+
+    if (!categoryCol || !chargesCol || !hoursCol) {
       draw([]);
+      return;
     }
+
+    const catValues     = client.elements.getColumn('source', categoryCol);
+    const chargeValues  = client.elements.getColumn('source', chargesCol);
+    const hourValues    = client.elements.getColumn('source', hoursCol);
+
+    if (!catValues || !catValues.length) { draw([]); return; }
+
+    const data = catValues.map((cat, i) => ({
+      Category: cat || 'Unknown',
+      Charges:  parseFloat(chargeValues?.[i]) || 0,
+      Hours:    parseFloat(hourValues?.[i])   || 0,
+    }));
+
+    draw(data);
   }
 
-  sigma.onReadyToRender(() => {
-    loadData();
-    sigma.addEventListener("columns:change", loadData);
-    sigma.addEventListener("data:change", loadData);
-  });
-}
-
-// Start polling for the sigma object (injected by Sigma's iframe)
-waitForSigma(50); // tries for ~15 seconds
+  client.config.subscribe(loadData);
+  client.elements.subscribe('source', loadData);
+  loadData();
+});
 </script>
 </body>
 </html>
