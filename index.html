@@ -1,173 +1,166 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
+<meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Nested Pie Chart</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; background: transparent; overflow: hidden; }
+  body { font-family: Arial, sans-serif; background: #fff; overflow: hidden; }
   #container { display: flex; align-items: center; justify-content: center; width: 100vw; height: 100vh; }
   #chart-wrap { display: flex; align-items: center; gap: 16px; }
-  #legend { display: flex; flex-direction: column; gap: 6px; min-width: 160px; max-width: 240px; }
+  #legend { display: flex; flex-direction: column; gap: 5px; min-width: 150px; max-width: 230px; }
   #legend h4 { font-size: 12px; font-weight: bold; color: #333; margin-bottom: 4px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #333; line-height: 1.3; }
   .legend-swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
-  .slice-label { font-size: 11px; pointer-events: none; fill: #fff; font-weight: bold; }
-  .center-label-main { font-size: 13px; font-weight: bold; fill: #333; }
-  .center-label-sub { font-size: 11px; fill: #888; }
+  .slice-label { pointer-events: none; fill: #fff; font-weight: bold; }
+  .center-main { font-size: 13px; font-weight: bold; fill: #333; }
+  .center-sub { font-size: 11px; fill: #888; }
+  #status { color: #999; font-size: 13px; padding: 20px; text-align: center; }
 </style>
 </head>
 <body>
 <div id="container">
-  <div id="chart-wrap">
+  <div id="status">Loading plugin...</div>
+  <div id="chart-wrap" style="display:none">
     <div id="chart"></div>
     <div id="legend"></div>
   </div>
 </div>
 
 <script>
-// ── Formatting Helpers ─────────────────────────────────────────────────────
-function fmtCharges(v) {
-  if (!v || isNaN(v)) return "$0";
-  if (Math.abs(v) >= 1e9) return "$" + d3.format(".2f")(v/1e9) + "B";
-  if (Math.abs(v) >= 1e6) return "$" + d3.format(".2f")(v/1e6) + "M";
-  if (Math.abs(v) >= 1e3) return "$" + d3.format(".1f")(v/1e3) + "k";
-  return "$" + d3.format(".0f")(v);
-}
-function fmtHours(v) {
-  if (!v || isNaN(v)) return "0";
-  if (Math.abs(v) >= 1e6) return d3.format(".2f")(v/1e6) + "M";
-  if (Math.abs(v) >= 1e3) return d3.format(".2f")(v/1e3) + "k";
-  return d3.format(".0f")(v);
-}
-function fmtPct(v) { return d3.format(".1%")(v); }
-
 const PALETTE = [
   "#4e79a7","#f28e2b","#e15759","#76b7b2","#59a14f",
   "#edc948","#b07aa1","#ff9da7","#9c755f","#bab0ac",
   "#aecde8","#ffbe7d","#ff9d9a","#b6dbd9","#a0cba8"
 ];
 
-// ── Draw ───────────────────────────────────────────────────────────────────
+function fmt$(v) {
+  if (!v || isNaN(v)) return "$0";
+  const a = Math.abs(v);
+  if (a >= 1e9) return "$" + (v/1e9).toFixed(2) + "B";
+  if (a >= 1e6) return "$" + (v/1e6).toFixed(2) + "M";
+  if (a >= 1e3) return "$" + (v/1e3).toFixed(1) + "k";
+  return "$" + v.toFixed(0);
+}
+function fmtH(v) {
+  if (!v || isNaN(v)) return "0";
+  const a = Math.abs(v);
+  if (a >= 1e6) return (v/1e6).toFixed(2) + "M";
+  if (a >= 1e3) return (v/1e3).toFixed(2) + "k";
+  return v.toFixed(0);
+}
+function pct(v) { return (v*100).toFixed(1) + "%"; }
+
 function draw(data) {
   d3.select("#chart").selectAll("*").remove();
   d3.select("#legend").selectAll("*").remove();
+  document.getElementById("status").style.display = "none";
+  document.getElementById("chart-wrap").style.display = "flex";
 
-  if (!data || data.length === 0) {
-    d3.select("#chart").append("p")
-      .style("color","#999").style("padding","20px")
-      .text("Waiting for data...");
+  if (!data || !data.length) {
+    document.getElementById("status").textContent = "Connect your data source to display the chart.";
+    document.getElementById("status").style.display = "block";
+    document.getElementById("chart-wrap").style.display = "none";
     return;
   }
 
   data = data.filter(d => d.Category && (d.Charges > 0 || d.Hours > 0));
-  data.sort((a, b) => b.Charges - a.Charges);
+  data.sort((a,b) => b.Charges - a.Charges);
 
-  const categories = data.map(d => d.Category);
-  const color = d3.scaleOrdinal().domain(categories).range(PALETTE);
+  const cats = data.map(d => d.Category);
+  const color = d3.scaleOrdinal().domain(cats).range(PALETTE);
 
-  const W = Math.min(window.innerWidth * 0.58, 400);
-  const H = Math.min(window.innerHeight * 0.92, 400);
+  const W = Math.min(window.innerWidth * 0.6, 380);
+  const H = Math.min(window.innerHeight * 0.9, 380);
   const cx = W/2, cy = H/2;
-  const outerR = Math.min(cx, cy) - 12;
-  const midR   = outerR * 0.62;
-  const innerR = outerR * 0.28;
+  const outerR = Math.min(cx,cy) - 14;
+  const midR   = outerR * 0.61;
+  const innerR = outerR * 0.27;
 
   const svg = d3.select("#chart").append("svg").attr("width",W).attr("height",H);
   const g = svg.append("g").attr("transform",`translate(${cx},${cy})`);
 
-  const pie = d3.pie().value(d => d).sort(null).padAngle(0.012);
-  const arcOuter = d3.arc().innerRadius(midR).outerRadius(outerR).cornerRadius(3);
-  const arcInner = d3.arc().innerRadius(innerR).outerRadius(midR-4).cornerRadius(3);
-  const arcOuterMid = d3.arc().innerRadius((midR+outerR)/2).outerRadius((midR+outerR)/2);
-  const arcInnerMid = d3.arc().innerRadius((innerR+midR-4)/2).outerRadius((innerR+midR-4)/2);
+  const pie = d3.pie().value(d=>d).sort(null).padAngle(0.014);
+  const arcO = d3.arc().innerRadius(midR).outerRadius(outerR).cornerRadius(3);
+  const arcI = d3.arc().innerRadius(innerR).outerRadius(midR-5).cornerRadius(3);
+  const midO = d3.arc().innerRadius((midR+outerR)/2).outerRadius((midR+outerR)/2);
+  const midI = d3.arc().innerRadius((innerR+midR-5)/2).outerRadius((innerR+midR-5)/2);
 
-  const totalC = d3.sum(data, d => d.Charges);
-  const totalH = d3.sum(data, d => d.Hours);
+  const totC = d3.sum(data, d=>d.Charges);
+  const totH = d3.sum(data, d=>d.Hours);
 
-  // Outer ring - Charges
-  const outerPie = pie(data.map(d => d.Charges));
-  g.selectAll(".arc-outer").data(outerPie).join("path")
-    .attr("d", arcOuter)
-    .attr("fill", (_,i) => color(categories[i]))
+  // — Outer slices (Charges) —
+  const outerArcs = pie(data.map(d=>d.Charges));
+  g.selectAll(".so").data(outerArcs).join("path")
+    .attr("d", arcO)
+    .attr("fill", (_,i) => color(cats[i]))
     .attr("stroke","#fff").attr("stroke-width",1.5)
-    .append("title")
-    .text((_,i) => `${categories[i]}: ${fmtCharges(data[i].Charges)} (${fmtPct(data[i].Charges/totalC)})`);
+    .append("title").text((_,i) => `${cats[i]}\n${fmt$(data[i].Charges)} (${pct(data[i].Charges/totC)})`);
 
-  g.selectAll(".lbl-outer").data(outerPie).join("text")
+  g.selectAll(".lo").data(outerArcs).join("text")
     .attr("class","slice-label")
-    .attr("transform", (_,i) => data[i].Charges/totalC > 0.04 ? `translate(${arcOuterMid.centroid(outerPie[i])})` : "translate(-9999,-9999)")
+    .attr("transform", (_,i) => {
+      const p = data[i].Charges/totC;
+      return p > 0.04 ? `translate(${midO.centroid(outerArcs[i])})` : "translate(-9999,-9999)";
+    })
     .attr("text-anchor","middle")
     .each(function(_,i) {
-      if (data[i].Charges/totalC <= 0.04) return;
-      d3.select(this).append("tspan").attr("x",0).attr("dy","-0.4em").attr("font-size","11px").text(fmtCharges(data[i].Charges));
-      d3.select(this).append("tspan").attr("x",0).attr("dy","1.2em").attr("font-size","10px").text(fmtPct(data[i].Charges/totalC));
+      const p = data[i].Charges/totC;
+      if (p <= 0.04) return;
+      const t = d3.select(this);
+      t.append("tspan").attr("x",0).attr("dy","-0.45em").attr("font-size","11px").text(fmt$(data[i].Charges));
+      t.append("tspan").attr("x",0).attr("dy","1.25em").attr("font-size","10px").text(pct(p));
     });
 
-  // Inner ring - Hours
-  const innerPie = pie(data.map(d => d.Hours));
-  g.selectAll(".arc-inner").data(innerPie).join("path")
-    .attr("d", arcInner)
-    .attr("fill", (_,i) => color(categories[i]))
-    .attr("opacity", 0.75)
+  // — Inner slices (Hours) —
+  const innerArcs = pie(data.map(d=>d.Hours));
+  g.selectAll(".si").data(innerArcs).join("path")
+    .attr("d", arcI)
+    .attr("fill", (_,i) => color(cats[i]))
+    .attr("opacity", 0.76)
     .attr("stroke","#fff").attr("stroke-width",1.5)
-    .append("title")
-    .text((_,i) => `${categories[i]}: ${fmtHours(data[i].Hours)} hrs (${fmtPct(data[i].Hours/totalH)})`);
+    .append("title").text((_,i) => `${cats[i]}\n${fmtH(data[i].Hours)} hrs (${pct(data[i].Hours/totH)})`);
 
-  g.selectAll(".lbl-inner").data(innerPie).join("text")
+  g.selectAll(".li").data(innerArcs).join("text")
     .attr("class","slice-label")
-    .attr("transform", (_,i) => data[i].Hours/totalH > 0.06 ? `translate(${arcInnerMid.centroid(innerPie[i])})` : "translate(-9999,-9999)")
+    .attr("transform", (_,i) => {
+      const p = data[i].Hours/totH;
+      return p > 0.07 ? `translate(${midI.centroid(innerArcs[i])})` : "translate(-9999,-9999)";
+    })
     .attr("text-anchor","middle")
     .each(function(_,i) {
-      if (data[i].Hours/totalH <= 0.06) return;
-      d3.select(this).append("tspan").attr("x",0).attr("dy","-0.4em").attr("font-size","10px").text(fmtHours(data[i].Hours));
-      d3.select(this).append("tspan").attr("x",0).attr("dy","1.2em").attr("font-size","9px").text(fmtPct(data[i].Hours/totalH));
+      const p = data[i].Hours/totH;
+      if (p <= 0.07) return;
+      const t = d3.select(this);
+      t.append("tspan").attr("x",0).attr("dy","-0.45em").attr("font-size","10px").text(fmtH(data[i].Hours));
+      t.append("tspan").attr("x",0).attr("dy","1.25em").attr("font-size","9px").text(pct(p));
     });
 
-  // Center text
-  g.append("text").attr("class","center-label-main").attr("text-anchor","middle").attr("dy","-0.6em").text(fmtCharges(totalC));
-  g.append("text").attr("class","center-label-sub").attr("text-anchor","middle").attr("dy","0.8em").text("Total Charges");
-  g.append("text").attr("class","center-label-sub").attr("text-anchor","middle").attr("dy","2em").text(fmtHours(totalH)+" hrs");
+  // — Center text —
+  g.append("text").attr("class","center-main").attr("text-anchor","middle").attr("dy","-0.6em").text(fmt$(totC));
+  g.append("text").attr("class","center-sub").attr("text-anchor","middle").attr("dy","0.8em").text("Total Charges");
+  g.append("text").attr("class","center-sub").attr("text-anchor","middle").attr("dy","2.1em").text(fmtH(totH)+" hrs");
 
-  // Ring labels
-  svg.append("text").attr("x",cx).attr("y",13).attr("text-anchor","middle").attr("font-size","11px").attr("fill","#555").attr("font-weight","bold").text("Outer: Charges");
-  svg.append("text").attr("x",cx).attr("y",H-3).attr("text-anchor","middle").attr("font-size","11px").attr("fill","#555").attr("font-weight","bold").text("Inner: Hours");
+  // — Ring annotations —
+  svg.append("text").attr("x",cx).attr("y",12).attr("text-anchor","middle").attr("font-size","10px").attr("fill","#666").attr("font-weight","bold").text("▸ Outer: Charges");
+  svg.append("text").attr("x",cx).attr("y",H-2).attr("text-anchor","middle").attr("font-size","10px").attr("fill","#666").attr("font-weight","bold").text("▸ Inner: Hours");
 
-  // Legend
-  const legend = d3.select("#legend");
-  legend.append("h4").text("Rate Category");
-  categories.forEach((cat,i) => {
-    const item = legend.append("div").attr("class","legend-item");
-    item.append("div").attr("class","legend-swatch").style("background", color(cat));
-    item.append("span").text(cat);
+  // — Legend —
+  const leg = d3.select("#legend");
+  leg.append("h4").text("Rate Category");
+  cats.forEach((cat,i) => {
+    const row = leg.append("div").attr("class","legend-item");
+    row.append("div").attr("class","legend-swatch").style("background", color(cat));
+    row.append("span").text(cat);
   });
 }
 
-// ── Sigma Plugin API ───────────────────────────────────────────────────────
-(function initSigma() {
-  if (typeof sigma === "undefined") {
-    // Dynamically load the Sigma plugin script
-    const s = document.createElement("script");
-    s.src = "https://unpkg.com/@sigmacomputing/plugin@latest/dist/bundle.js";
-    s.onload = setupSigma;
-    s.onerror = () => {
-      // If CDN fails, try alternate
-      const s2 = document.createElement("script");
-      s2.src = "https://cdn.jsdelivr.net/npm/@sigmacomputing/plugin@latest/dist/bundle.js";
-      s2.onload = setupSigma;
-      document.head.appendChild(s2);
-    };
-    document.head.appendChild(s);
-  } else {
-    setupSigma();
-  }
-})();
-
-function setupSigma() {
+// ── Sigma Plugin Setup ─────────────────────────────────────────────────────
+function setupPlugin() {
   sigma.config({
-    id: "nested-pie-chart",
+    id:   "nested-pie-chart",
     name: "Nested Pie Chart",
     columns: [
       { name: "Category", type: "text"   },
@@ -176,28 +169,49 @@ function setupSigma() {
     ]
   });
 
+  function loadData() {
+    try {
+      const rows = sigma.getAllRows("Category");
+      if (!rows || !rows.length) { draw([]); return; }
+      draw(rows.map(r => ({
+        Category: r["Category"] || "Unknown",
+        Charges:  parseFloat(r["Charges"]) || 0,
+        Hours:    parseFloat(r["Hours"])   || 0,
+      })));
+    } catch(e) {
+      console.error("Data error:", e);
+      draw([]);
+    }
+  }
+
   sigma.onReadyToRender(() => {
+    loadData();
     sigma.addEventListener("columns:change", loadData);
     sigma.addEventListener("data:change", loadData);
-    loadData();
   });
 }
 
-function loadData() {
-  try {
-    const rows = sigma.getAllRows("Category");
-    if (!rows || rows.length === 0) { draw([]); return; }
-    const data = rows.map(row => ({
-      Category: row["Category"] ?? "Unknown",
-      Charges:  parseFloat(row["Charges"]) || 0,
-      Hours:    parseFloat(row["Hours"])   || 0,
-    }));
-    draw(data);
-  } catch(e) {
-    console.error("Sigma data error:", e);
-    draw([]);
+// Load Sigma API with multiple fallbacks
+function loadScript(urls, idx) {
+  if (idx >= urls.length) {
+    document.getElementById("status").textContent = "Error: Could not load Sigma Plugin API.";
+    return;
   }
+  const s = document.createElement("script");
+  s.src = urls[idx];
+  s.onload = () => {
+    document.getElementById("status").textContent = "Waiting for data...";
+    setupPlugin();
+  };
+  s.onerror = () => loadScript(urls, idx + 1);
+  document.head.appendChild(s);
 }
+
+loadScript([
+  "https://unpkg.com/@sigmacomputing/plugin@latest/dist/bundle.js",
+  "https://cdn.jsdelivr.net/npm/@sigmacomputing/plugin@latest/dist/bundle.js",
+  "https://unpkg.com/@sigmacomputing/plugin/dist/bundle.js"
+], 0);
 </script>
 </body>
 </html>
