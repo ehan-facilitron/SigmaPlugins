@@ -5,18 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Nested Pie Chart</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
-<script src="https://unpkg.com/@sigmacomputing/plugin"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; background: transparent; overflow: hidden; }
   #container { display: flex; align-items: center; justify-content: center; width: 100vw; height: 100vh; }
   #chart-wrap { display: flex; align-items: center; gap: 16px; }
-  #chart svg { display: block; }
-  #legend { display: flex; flex-direction: column; gap: 6px; min-width: 180px; max-width: 260px; }
+  #legend { display: flex; flex-direction: column; gap: 6px; min-width: 160px; max-width: 240px; }
   #legend h4 { font-size: 12px; font-weight: bold; color: #333; margin-bottom: 4px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #333; line-height: 1.3; }
   .legend-swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
-  .slice-label { font-size: 11px; pointer-events: none; fill: #fff; font-weight: bold; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+  .slice-label { font-size: 11px; pointer-events: none; fill: #fff; font-weight: bold; }
   .center-label-main { font-size: 13px; font-weight: bold; fill: #333; }
   .center-label-sub { font-size: 11px; fill: #888; }
 </style>
@@ -30,181 +28,175 @@
 </div>
 
 <script>
-// ── Sigma Plugin Registration ──────────────────────────────────────────────
-sigma.config({
-  id: "nested-pie-chart",
-  name: "Nested Pie Chart",
-  columns: [
-    { name: "Category",  type: "text"   },
-    { name: "Charges",   type: "number" },
-    { name: "Hours",     type: "number" },
-  ]
-});
-
 // ── Formatting Helpers ─────────────────────────────────────────────────────
 function fmtCharges(v) {
-  if (v == null || isNaN(v)) return "$0";
-  if (Math.abs(v) >= 1e9) return "$" + d3.format(".2f")(v / 1e9) + "B";
-  if (Math.abs(v) >= 1e6) return "$" + d3.format(".2f")(v / 1e6) + "M";
-  if (Math.abs(v) >= 1e3) return "$" + d3.format(".1f")(v / 1e3) + "k";
+  if (!v || isNaN(v)) return "$0";
+  if (Math.abs(v) >= 1e9) return "$" + d3.format(".2f")(v/1e9) + "B";
+  if (Math.abs(v) >= 1e6) return "$" + d3.format(".2f")(v/1e6) + "M";
+  if (Math.abs(v) >= 1e3) return "$" + d3.format(".1f")(v/1e3) + "k";
   return "$" + d3.format(".0f")(v);
 }
 function fmtHours(v) {
-  if (v == null || isNaN(v)) return "0";
-  if (Math.abs(v) >= 1e9) return d3.format(".2f")(v / 1e9) + "B";
-  if (Math.abs(v) >= 1e6) return d3.format(".2f")(v / 1e6) + "M";
-  if (Math.abs(v) >= 1e3) return d3.format(".2f")(v / 1e3) + "k";
+  if (!v || isNaN(v)) return "0";
+  if (Math.abs(v) >= 1e6) return d3.format(".2f")(v/1e6) + "M";
+  if (Math.abs(v) >= 1e3) return d3.format(".2f")(v/1e3) + "k";
   return d3.format(".0f")(v);
 }
 function fmtPct(v) { return d3.format(".1%")(v); }
 
-// ── Color Palette ──────────────────────────────────────────────────────────
 const PALETTE = [
   "#4e79a7","#f28e2b","#e15759","#76b7b2","#59a14f",
-  "#edc948","#b07aa1","#ff9da7","#9c755f","#bab0ac"
+  "#edc948","#b07aa1","#ff9da7","#9c755f","#bab0ac",
+  "#aecde8","#ffbe7d","#ff9d9a","#b6dbd9","#a0cba8"
 ];
 
-// ── Main Draw Function ─────────────────────────────────────────────────────
+// ── Draw ───────────────────────────────────────────────────────────────────
 function draw(data) {
   d3.select("#chart").selectAll("*").remove();
   d3.select("#legend").selectAll("*").remove();
 
   if (!data || data.length === 0) {
-    d3.select("#chart").append("p").style("color","#999").style("padding","20px").text("No data");
+    d3.select("#chart").append("p")
+      .style("color","#999").style("padding","20px")
+      .text("Waiting for data...");
     return;
   }
 
-  // Filter out rows with no category or zero values
   data = data.filter(d => d.Category && (d.Charges > 0 || d.Hours > 0));
+  data.sort((a, b) => b.Charges - a.Charges);
 
   const categories = data.map(d => d.Category);
   const color = d3.scaleOrdinal().domain(categories).range(PALETTE);
 
-  const W = Math.min(window.innerWidth * 0.55, 420);
-  const H = Math.min(window.innerHeight * 0.92, 420);
-  const cx = W / 2, cy = H / 2;
-  const outerR = Math.min(cx, cy) - 10;
+  const W = Math.min(window.innerWidth * 0.58, 400);
+  const H = Math.min(window.innerHeight * 0.92, 400);
+  const cx = W/2, cy = H/2;
+  const outerR = Math.min(cx, cy) - 12;
   const midR   = outerR * 0.62;
   const innerR = outerR * 0.28;
 
-  const svg = d3.select("#chart").append("svg")
-    .attr("width", W).attr("height", H);
-
-  const g = svg.append("g").attr("transform", `translate(${cx},${cy})`);
+  const svg = d3.select("#chart").append("svg").attr("width",W).attr("height",H);
+  const g = svg.append("g").attr("transform",`translate(${cx},${cy})`);
 
   const pie = d3.pie().value(d => d).sort(null).padAngle(0.012);
   const arcOuter = d3.arc().innerRadius(midR).outerRadius(outerR).cornerRadius(3);
-  const arcInner = d3.arc().innerRadius(innerR).outerRadius(midR - 4).cornerRadius(3);
-  const arcOuterLabel = d3.arc().innerRadius((midR + outerR) / 2).outerRadius((midR + outerR) / 2);
-  const arcInnerLabel = d3.arc().innerRadius((innerR + midR - 4) / 2).outerRadius((innerR + midR - 4) / 2);
+  const arcInner = d3.arc().innerRadius(innerR).outerRadius(midR-4).cornerRadius(3);
+  const arcOuterMid = d3.arc().innerRadius((midR+outerR)/2).outerRadius((midR+outerR)/2);
+  const arcInnerMid = d3.arc().innerRadius((innerR+midR-4)/2).outerRadius((innerR+midR-4)/2);
 
-  const totalCharges = d3.sum(data, d => d.Charges);
-  const totalHours   = d3.sum(data, d => d.Hours);
+  const totalC = d3.sum(data, d => d.Charges);
+  const totalH = d3.sum(data, d => d.Hours);
 
-  // ── Outer Ring (Charges) ──
+  // Outer ring - Charges
   const outerPie = pie(data.map(d => d.Charges));
-  g.selectAll(".outer-slice")
-    .data(outerPie)
-    .join("path")
-    .attr("class","outer-slice")
+  g.selectAll(".arc-outer").data(outerPie).join("path")
     .attr("d", arcOuter)
-    .attr("fill", (d, i) => color(categories[i]))
-    .attr("stroke","#fff").attr("stroke-width", 1.5)
+    .attr("fill", (_,i) => color(categories[i]))
+    .attr("stroke","#fff").attr("stroke-width",1.5)
     .append("title")
-    .text((d, i) => `${categories[i]}\nCharges: ${fmtCharges(data[i].Charges)} (${fmtPct(data[i].Charges / totalCharges)})`);
+    .text((_,i) => `${categories[i]}: ${fmtCharges(data[i].Charges)} (${fmtPct(data[i].Charges/totalC)})`);
 
-  // Outer labels
-  g.selectAll(".outer-label")
-    .data(outerPie)
-    .join("text")
+  g.selectAll(".lbl-outer").data(outerPie).join("text")
     .attr("class","slice-label")
-    .attr("transform", (d, i) => {
-      const pct = data[i].Charges / totalCharges;
-      return pct > 0.04 ? `translate(${arcOuterLabel.centroid(d)})` : "translate(-9999,-9999)";
-    })
+    .attr("transform", (_,i) => data[i].Charges/totalC > 0.04 ? `translate(${arcOuterMid.centroid(outerPie[i])})` : "translate(-9999,-9999)")
     .attr("text-anchor","middle")
-    .each(function(d, i) {
-      const pct = data[i].Charges / totalCharges;
-      if (pct <= 0.04) return;
-      const el = d3.select(this);
-      el.append("tspan").attr("x",0).attr("dy","-0.4em").attr("font-size","11px").text(fmtCharges(data[i].Charges));
-      el.append("tspan").attr("x",0).attr("dy","1.2em").attr("font-size","10px").text(fmtPct(pct));
+    .each(function(_,i) {
+      if (data[i].Charges/totalC <= 0.04) return;
+      d3.select(this).append("tspan").attr("x",0).attr("dy","-0.4em").attr("font-size","11px").text(fmtCharges(data[i].Charges));
+      d3.select(this).append("tspan").attr("x",0).attr("dy","1.2em").attr("font-size","10px").text(fmtPct(data[i].Charges/totalC));
     });
 
-  // ── Inner Ring (Hours) ──
+  // Inner ring - Hours
   const innerPie = pie(data.map(d => d.Hours));
-  g.selectAll(".inner-slice")
-    .data(innerPie)
-    .join("path")
-    .attr("class","inner-slice")
+  g.selectAll(".arc-inner").data(innerPie).join("path")
     .attr("d", arcInner)
-    .attr("fill", (d, i) => color(categories[i]))
-    .attr("opacity", 0.72)
-    .attr("stroke","#fff").attr("stroke-width", 1.5)
+    .attr("fill", (_,i) => color(categories[i]))
+    .attr("opacity", 0.75)
+    .attr("stroke","#fff").attr("stroke-width",1.5)
     .append("title")
-    .text((d, i) => `${categories[i]}\nHours: ${fmtHours(data[i].Hours)} (${fmtPct(data[i].Hours / totalHours)})`);
+    .text((_,i) => `${categories[i]}: ${fmtHours(data[i].Hours)} hrs (${fmtPct(data[i].Hours/totalH)})`);
 
-  // Inner labels
-  g.selectAll(".inner-label")
-    .data(innerPie)
-    .join("text")
+  g.selectAll(".lbl-inner").data(innerPie).join("text")
     .attr("class","slice-label")
-    .attr("transform", (d, i) => {
-      const pct = data[i].Hours / totalHours;
-      return pct > 0.06 ? `translate(${arcInnerLabel.centroid(d)})` : "translate(-9999,-9999)";
-    })
+    .attr("transform", (_,i) => data[i].Hours/totalH > 0.06 ? `translate(${arcInnerMid.centroid(innerPie[i])})` : "translate(-9999,-9999)")
     .attr("text-anchor","middle")
-    .each(function(d, i) {
-      const pct = data[i].Hours / totalHours;
-      if (pct <= 0.06) return;
-      const el = d3.select(this);
-      el.append("tspan").attr("x",0).attr("dy","-0.4em").attr("font-size","10px").text(fmtHours(data[i].Hours));
-      el.append("tspan").attr("x",0).attr("dy","1.2em").attr("font-size","9px").text(fmtPct(pct));
+    .each(function(_,i) {
+      if (data[i].Hours/totalH <= 0.06) return;
+      d3.select(this).append("tspan").attr("x",0).attr("dy","-0.4em").attr("font-size","10px").text(fmtHours(data[i].Hours));
+      d3.select(this).append("tspan").attr("x",0).attr("dy","1.2em").attr("font-size","9px").text(fmtPct(data[i].Hours/totalH));
     });
 
-  // ── Center Labels ──
-  g.append("text").attr("class","center-label-main").attr("text-anchor","middle").attr("dy","-0.6em").text(fmtCharges(totalCharges));
+  // Center text
+  g.append("text").attr("class","center-label-main").attr("text-anchor","middle").attr("dy","-0.6em").text(fmtCharges(totalC));
   g.append("text").attr("class","center-label-sub").attr("text-anchor","middle").attr("dy","0.8em").text("Total Charges");
-  g.append("text").attr("class","center-label-sub").attr("text-anchor","middle").attr("dy","2em").text(fmtHours(totalHours) + " hrs");
+  g.append("text").attr("class","center-label-sub").attr("text-anchor","middle").attr("dy","2em").text(fmtHours(totalH)+" hrs");
 
-  // ── Ring Labels (outside chart) ──
-  svg.append("text").attr("x", cx).attr("y", 14)
-    .attr("text-anchor","middle").attr("font-size","11px").attr("fill","#555").attr("font-weight","bold")
-    .text("Outer: Charges");
-  svg.append("text").attr("x", cx).attr("y", H - 4)
-    .attr("text-anchor","middle").attr("font-size","11px").attr("fill","#555").attr("font-weight","bold")
-    .text("Inner: Hours");
+  // Ring labels
+  svg.append("text").attr("x",cx).attr("y",13).attr("text-anchor","middle").attr("font-size","11px").attr("fill","#555").attr("font-weight","bold").text("Outer: Charges");
+  svg.append("text").attr("x",cx).attr("y",H-3).attr("text-anchor","middle").attr("font-size","11px").attr("fill","#555").attr("font-weight","bold").text("Inner: Hours");
 
-  // ── Legend ──
+  // Legend
   const legend = d3.select("#legend");
   legend.append("h4").text("Rate Category");
-  categories.forEach((cat, i) => {
+  categories.forEach((cat,i) => {
     const item = legend.append("div").attr("class","legend-item");
     item.append("div").attr("class","legend-swatch").style("background", color(cat));
     item.append("span").text(cat);
   });
 }
 
-// ── Sigma Data Listener ────────────────────────────────────────────────────
-sigma.onReadyToRender(() => {
-  sigma.addEventListener("columns:change", loadData);
-  sigma.addEventListener("data:change", loadData);
-  loadData();
-});
+// ── Sigma Plugin API ───────────────────────────────────────────────────────
+(function initSigma() {
+  if (typeof sigma === "undefined") {
+    // Dynamically load the Sigma plugin script
+    const s = document.createElement("script");
+    s.src = "https://unpkg.com/@sigmacomputing/plugin@latest/dist/bundle.js";
+    s.onload = setupSigma;
+    s.onerror = () => {
+      // If CDN fails, try alternate
+      const s2 = document.createElement("script");
+      s2.src = "https://cdn.jsdelivr.net/npm/@sigmacomputing/plugin@latest/dist/bundle.js";
+      s2.onload = setupSigma;
+      document.head.appendChild(s2);
+    };
+    document.head.appendChild(s);
+  } else {
+    setupSigma();
+  }
+})();
+
+function setupSigma() {
+  sigma.config({
+    id: "nested-pie-chart",
+    name: "Nested Pie Chart",
+    columns: [
+      { name: "Category", type: "text"   },
+      { name: "Charges",  type: "number" },
+      { name: "Hours",    type: "number" },
+    ]
+  });
+
+  sigma.onReadyToRender(() => {
+    sigma.addEventListener("columns:change", loadData);
+    sigma.addEventListener("data:change", loadData);
+    loadData();
+  });
+}
 
 function loadData() {
-  const rows = sigma.getAllRows("Category");
-  if (!rows || rows.length === 0) { draw([]); return; }
-
-  const data = rows.map(row => ({
-    Category: row["Category"] ?? "Unknown",
-    Charges:  parseFloat(row["Charges"]) || 0,
-    Hours:    parseFloat(row["Hours"])   || 0,
-  }));
-
-  // Sort by Charges descending
-  data.sort((a, b) => b.Charges - a.Charges);
-  draw(data);
+  try {
+    const rows = sigma.getAllRows("Category");
+    if (!rows || rows.length === 0) { draw([]); return; }
+    const data = rows.map(row => ({
+      Category: row["Category"] ?? "Unknown",
+      Charges:  parseFloat(row["Charges"]) || 0,
+      Hours:    parseFloat(row["Hours"])   || 0,
+    }));
+    draw(data);
+  } catch(e) {
+    console.error("Sigma data error:", e);
+    draw([]);
+  }
 }
 </script>
 </body>
